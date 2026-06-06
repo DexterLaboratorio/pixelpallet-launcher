@@ -409,17 +409,53 @@ async function validateSelectedMicrosoftAccount(){
 
 /**
  * Validate the selected auth account.
- * 
+ *
  * @returns {Promise.<boolean>} Promise which resolves to true if the access token is valid,
  * otherwise false.
  */
 exports.validateSelected = async function(){
     const current = ConfigManager.getSelectedAccount()
 
-    if(current.type === 'microsoft') {
+    if(current.type === 'offline') {
+        // Contas offline são sempre válidas — não há servidor para validar.
+        return true
+    } else if(current.type === 'microsoft') {
         return await validateSelectedMicrosoftAccount()
     } else {
         return await validateSelectedMojangAccount()
     }
-    
+
+}
+
+/**
+ * Adiciona uma conta offline (sem verificação Mojang/Microsoft).
+ * Gera um UUID determinístico baseado no nick — igual ao algoritmo do Minecraft offline.
+ *
+ * @param {string} username Nick do jogador (3-16 caracteres, só letras/números/underline)
+ * @returns {Object} O objeto da conta criada.
+ */
+exports.addOfflineAccount = function(username) {
+    const crypto = require('crypto')
+
+    // UUID offline: mesmo algoritmo que o Minecraft usa internamente para modo offline
+    const hash = crypto.createHash('md5').update('OfflinePlayer:' + username).digest()
+    hash[6] = (hash[6] & 0x0f) | 0x30  // version 3
+    hash[8] = (hash[8] & 0x3f) | 0x80  // variant RFC 4122
+
+    const hex = hash.toString('hex')
+    const uuid = [
+        hex.substring(0, 8),
+        hex.substring(8, 12),
+        hex.substring(12, 16),
+        hex.substring(16, 20),
+        hex.substring(20, 32)
+    ].join('-')
+
+    // Reutilizamos addMojangAuthAccount mas com type 'offline'
+    const account = ConfigManager.addMojangAuthAccount(uuid, '0', username, username)
+    account.type = 'offline'
+    ConfigManager.save()
+
+    log.info('Conta offline criada para:', username, '| UUID:', uuid)
+    return account
 }
